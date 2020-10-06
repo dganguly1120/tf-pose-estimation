@@ -30,14 +30,6 @@ if __name__ == '__main__':
     parser.add_argument('--tensorrt', type=str, default="False",
                         help='for tensorrt process.')
     args = parser.parse_args()
-
-    #logger.debug('initialization %s : %s' % (args.model, get_graph_path(args.model)))
-    w, h = model_wh(args.resize)
-    if w > 0 and h > 0:
-        e = TfPoseEstimator(get_graph_path(args.model), target_size=(w, h), trt_bool=str2bool(args.tensorrt))
-    else:
-        e = TfPoseEstimator(get_graph_path(args.model), target_size=(432, 368), trt_bool=str2bool(args.tensorrt))
-    #logger.debug('cam read+')
     
     if args.camera:
         cam = cv2.VideoCapture(0)
@@ -48,7 +40,7 @@ if __name__ == '__main__':
     fps = 15
     val = numf//fps
     
-    out = cv2.VideoWriter("out.avi", cv2.VideoWriter_fourcc(*"MJPG"), 15, (int(cam.get(3)), int(cam.get(4))))
+    out = cv2.VideoWriter("out.avi", cv2.VideoWriter_fourcc(*"MJPG"), int(cam.get(5)), (int(cam.get(3)), int(cam.get(4))))
     #logger.info('cam image=%dx%d' % (image.shape[1], image.shape[0]))
 
     # print(cam.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -73,7 +65,7 @@ if __name__ == '__main__':
         if ret_val == False:
             break
         #logger.debug('image process+')
-        humans = e.inference(image, resize_to_default=(w > 0 and h > 0), upsample_size=args.resize_out_ratio)
+        humans = e.inference(image, resize_to_default=(w > 0 and h > 0), upsample_size=3)
         image_out = image.copy()
         image_out[:,:,:] = 0 
         #logger.debug('postprocess+')
@@ -86,7 +78,8 @@ if __name__ == '__main__':
         #             (0, 255, 0), 2)
         cv2.imshow('original', image)
         cv2.imshow('out', image_out)
-        out.write(image_out)
+        for _ in range(val):
+            out.write(image_out)
         
         if cv2.waitKey(40) == 27:
             break
