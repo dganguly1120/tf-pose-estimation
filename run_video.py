@@ -22,7 +22,7 @@ fps_time = 0
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='tf-pose-estimation Video')
     parser.add_argument('--video', type=str, default='')
-    parser.add_argument('--resolution', type=str, default='432x368', help='network input resolution. default=432x368')
+    parser.add_argument('--resolution', type=str, default='600x600', help='network input resolution. default=600x600')
     parser.add_argument('--model', type=str, default='mobilenet_thin', help='cmu / mobilenet_thin / mobilenet_v2_large / mobilenet_v2_small')
     parser.add_argument('--show-process', type=bool, default=False,
                         help='for debug purpose, if enabled, speed for inference is dropped.')
@@ -32,13 +32,13 @@ if __name__ == '__main__':
     logger.debug('initialization %s : %s' % (args.model, get_graph_path(args.model)))
     w, h = model_wh(args.resolution)
     e = TfPoseEstimator(get_graph_path(args.model), target_size=(w, h))
-    cap = cv2.VideoCapture(args.video)
+    cap = cv2.VideoCapture(0)
 
     if cap.isOpened() is False:
         print("Error opening video stream or file")
     while cap.isOpened():
         ret_val, image = cap.read()
-
+        image = cv2.resize(image, (600,600), interpolation = cv2.INTER_AREA)
         humans = e.inference(image)
         if not args.showBG:
             image = np.zeros(image.shape)

@@ -31,6 +31,7 @@ class CocoPart(Enum):
     LEar = 17
     Background = 18
 
+part_shape = {0: "!", 14: "O", 15:"O", 16: "<", 17: ">"}
 
 class MPIIPart(Enum):
     RAnkle = 0

@@ -11,8 +11,8 @@ import time
 from tf_pose import common
 from tf_pose.common import CocoPart
 from tf_pose.tensblur.smoother import Smoother
-import tensorflow.contrib.tensorrt as trt
-
+#import tensorflow.contrib.tensorrt as trt
+tf.compat.v1.disable_eager_execution()
 try:
     from tf_pose.pafprocess import pafprocess
 except ModuleNotFoundError as e:
@@ -308,8 +308,8 @@ class TfPoseEstimator:
 
         # load graph
         logger.info('loading graph from %s(default size=%dx%d)' % (graph_path, target_size[0], target_size[1]))
-        with tf.gfile.GFile(graph_path, 'rb') as f:
-            graph_def = tf.GraphDef()
+        with tf.io.gfile.GFile(graph_path, 'rb') as f:
+            graph_def = tf.compat.v1.GraphDef()
             graph_def.ParseFromString(f.read())
 
         if trt_bool is True:
@@ -327,39 +327,40 @@ class TfPoseEstimator:
                 use_calibration=True,
             )
 
-        self.graph = tf.get_default_graph()
+        self.graph = tf.compat.v1.get_default_graph()
         tf.import_graph_def(graph_def, name='TfPoseEstimator')
-        self.persistent_sess = tf.Session(graph=self.graph, config=tf_config)
+        self.persistent_sess = tf.compat.v1.Session(graph=self.graph, config=tf_config)
 
-        for ts in [n.name for n in tf.get_default_graph().as_graph_def().node]:
-            print(ts)
+        for ts in [n.name for n in tf.compat.v1.get_default_graph().as_graph_def().node]:
+            #print(ts)
+            pass
 
         self.tensor_image = self.graph.get_tensor_by_name('TfPoseEstimator/image:0')
         self.tensor_output = self.graph.get_tensor_by_name('TfPoseEstimator/Openpose/concat_stage7:0')
         self.tensor_heatMat = self.tensor_output[:, :, :, :19]
         self.tensor_pafMat = self.tensor_output[:, :, :, 19:]
-        self.upsample_size = tf.placeholder(dtype=tf.int32, shape=(2,), name='upsample_size')
-        self.tensor_heatMat_up = tf.image.resize_area(self.tensor_output[:, :, :, :19], self.upsample_size,
-                                                      align_corners=False, name='upsample_heatmat')
-        self.tensor_pafMat_up = tf.image.resize_area(self.tensor_output[:, :, :, 19:], self.upsample_size,
-                                                     align_corners=False, name='upsample_pafmat')
+        self.upsample_size = tf.compat.v1.placeholder(dtype=tf.int32, shape=(2,), name='upsample_size')
+        self.tensor_heatMat_up = tf.image.resize(self.tensor_output[:, :, :, :19], self.upsample_size,
+                                                      method=tf.image.ResizeMethod.AREA, name='upsample_heatmat')
+        self.tensor_pafMat_up = tf.image.resize(self.tensor_output[:, :, :, 19:], self.upsample_size,
+                                                     method=tf.image.ResizeMethod.AREA, name='upsample_pafmat')
         if trt_bool is True:
             smoother = Smoother({'data': self.tensor_heatMat_up}, 25, 3.0, 19)
         else:
             smoother = Smoother({'data': self.tensor_heatMat_up}, 25, 3.0)
         gaussian_heatMat = smoother.get_output()
 
-        max_pooled_in_tensor = tf.nn.pool(gaussian_heatMat, window_shape=(3, 3), pooling_type='MAX', padding='SAME')
-        self.tensor_peaks = tf.where(tf.equal(gaussian_heatMat, max_pooled_in_tensor), gaussian_heatMat,
+        max_pooled_in_tensor = tf.nn.pool(input=gaussian_heatMat, window_shape=(3, 3), pooling_type='MAX', padding='SAME')
+        self.tensor_peaks = tf.compat.v1.where(tf.equal(gaussian_heatMat, max_pooled_in_tensor), gaussian_heatMat,
                                      tf.zeros_like(gaussian_heatMat))
 
         self.heatMat = self.pafMat = None
 
         # warm-up
-        self.persistent_sess.run(tf.variables_initializer(
-            [v for v in tf.global_variables() if
+        self.persistent_sess.run(tf.compat.v1.variables_initializer(
+            [v for v in tf.compat.v1.global_variables() if
              v.name.split(':')[0] in [x.decode('utf-8') for x in
-                                      self.persistent_sess.run(tf.report_uninitialized_variables())]
+                                      self.persistent_sess.run(tf.compat.v1.report_uninitialized_variables())]
              ])
         )
         self.persistent_sess.run(
@@ -393,7 +394,7 @@ class TfPoseEstimator:
         pass
 
     def get_flops(self):
-        flops = tf.profiler.profile(self.graph, options=tf.profiler.ProfileOptionBuilder.float_operation())
+        flops = tf.compat.v1.profiler.profile(self.graph, options=tf.compat.v1.profiler.ProfileOptionBuilder.float_operation())
         return flops.total_float_ops
 
     @staticmethod
@@ -410,20 +411,28 @@ class TfPoseEstimator:
             npimg = np.copy(npimg)
         image_h, image_w = npimg.shape[:2]
         centers = {}
+        #print("humans", humans)
+        humans=humans[:1]
         for human in humans:
             # draw point
+            #print("human", human.body_parts)
             for i in range(common.CocoPart.Background.value):
                 if i not in human.body_parts.keys():
                     continue
 
                 body_part = human.body_parts[i]
+                
                 center = (int(body_part.x * image_w + 0.5), int(body_part.y * image_h + 0.5))
                 centers[i] = center
-                cv2.circle(npimg, center, 3, common.CocoColors[i], thickness=3, lineType=8, shift=0)
+                if i in common.part_shape:
+                    cv2.putText(npimg, common.part_shape[i], center, cv2.FONT_HERSHEY_DUPLEX, 1, (255,255,255), 2, cv2.LINE_AA)
+                else:
+                    cv2.circle(npimg, center, 3, common.CocoColors[i], thickness=3, lineType=8, shift=0)
+
 
             # draw line
             for pair_order, pair in enumerate(common.CocoPairsRender):
-                if pair[0] not in human.body_parts.keys() or pair[1] not in human.body_parts.keys():
+                if pair[0] not in human.body_parts.keys() or pair[1] not in human.body_parts.keys() or (pair[0] in common.part_shape and pair[1] in common.part_shape):
                     continue
 
                 # npimg = cv2.line(npimg, centers[pair[0]], centers[pair[1]], common.CocoColors[pair_order], 3)
